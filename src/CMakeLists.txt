@@ -1,9 +1,12 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.14)
 project(dictionary C CXX)
 
 add_library(dictionary EXCLUDE_FROM_ALL
-        file_manager.cpp
-        dictionary.cpp)
+        writer.cpp
+        reader.cpp
+        dictionary.cpp
+        include/timer.h
+)
 target_include_directories(dictionary PUBLIC include)
 
 enable_testing()

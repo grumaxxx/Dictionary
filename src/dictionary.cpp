@@ -1,16 +1,21 @@
 #include "dictionary.h"
+#include "timer.h"
+
+#include <iostream>
 
 static constexpr size_t INITIAL_FILE_SIZE = 4096;
+static constexpr size_t INITIAL_STRING_SIZE = 10;
 
-Dictionary::Dictionary()
-        : m_trie_root(new TrieNode()) {
+Dictionary::Dictionary(std::unique_ptr<IReader> reader, std::unique_ptr<IWriter> writer)
+        : m_trie_root(new TrieNode())
+        , m_reader(std::move(reader))
+        , m_writer(std::move(writer)) {
 }
 
-int Dictionary::write_to_file(const std::string &output_file) {
-    FileWriter manager(output_file);
+int Dictionary::write_to_file() {
     size_t curr_size = INITIAL_FILE_SIZE;
-    char *ptr;
-    auto r = manager.prepare_file(curr_size, &ptr);
+    char *ptr = nullptr;
+    auto r = m_writer->prepare_file(curr_size, &ptr);
     if (r != 0) {
         return -1;
     }
@@ -22,14 +27,15 @@ int Dictionary::write_to_file(const std::string &output_file) {
 
         if (offset + line.size() > curr_size) {
             curr_size *= 2;
-            r = manager.resize_file(ptr, curr_size, curr_size * 2);
+            r = m_writer->resize_file(ptr, curr_size, curr_size * 2);
             if (r != 0) {
                 return -1;
             }
         }
 
-        r = manager.write_to_file(ptr + offset, line);
+        r = m_writer->write_to_file(ptr + offset, line);
         if (r != 0) {
+            std::cerr << "Failed to write to file\n";
             return -1;
         }
         offset += line.size();
@@ -37,23 +43,25 @@ int Dictionary::write_to_file(const std::string &output_file) {
         m_queue.pop();
     }
 
-    r = manager.close_file(ptr, offset);
+    r = m_writer->close_file(ptr, offset);
     if (r != 0) {
+        std::cerr << "Failed to close file\n";
         return -1;
     }
     return 0;
 }
 
 void Dictionary::populate_trie(const char *file_content, size_t file_size) {
-    TrieNode *node = m_trie_root.get();
+    TrieNode *root = m_trie_root.get();
+    TrieNode *node = root;
     for (size_t i = 0; i <= file_size; ++i) {
         char c = file_content[i];
         if (!std::isalpha(c)) {
-            if (node == m_trie_root.get()) {
+            if (node == root) {
                 continue;
             }
             node->word_count++;
-            node = m_trie_root.get();
+            node = root;
             continue;
         }
 
@@ -68,7 +76,7 @@ void Dictionary::populate_trie(const char *file_content, size_t file_size) {
 }
 
 template <typename T>
-static void dfs(TrieNode *node, std::string current_word, T &pq) {
+static void dfs(TrieNode *node, std::string &current_word, T &pq) {
     if (node == nullptr) {
         return;
     }
@@ -77,35 +85,49 @@ static void dfs(TrieNode *node, std::string current_word, T &pq) {
         pq.push({current_word, node->word_count});
     }
 
-    for (int i = 0; i < 26; ++i) {
-        if (node->children[i].get() != nullptr) {
-            char nextChar = 'a' + i;
-            dfs(node->children[i].get(), current_word + nextChar, pq);
+    for (int i = 0; i < ENGLISH_LETTER_COUNT; ++i) {
+        if (node->children[i]) {
+            current_word.push_back('a' + i);
+            dfs(node->children[i].get(), current_word, pq);
+            current_word.pop_back();
         }
     }
 }
 
 int Dictionary::prepare_to_output() {
-    dfs(m_trie_root.get(), "", m_queue);
+    std::string initial;
+    initial.reserve(INITIAL_STRING_SIZE);
+    dfs(m_trie_root.get(), initial, m_queue);
     return 0;
 }
 
-int Dictionary::process(const std::string &input_file, const std::string &output_file) {
-    FileReader manager(input_file);
+int Dictionary::process(bool verbose) {
     size_t file_size = 0;
     char *file_content = nullptr;
-    auto r = manager.prepare_file(file_size, &file_content);
-    if (r != 0) {
-        return -1;
+
+    {
+        Timer timer("Reading file", verbose);
+        if (m_reader->read(&file_content, &file_size) != 0) {
+            std::cerr << "Failed to read from file\n";
+            return -1;
+        };
     }
 
-    this->populate_trie(file_content, file_size);
-    r = manager.close_file(file_content, file_size);
-    if (r != 0) {
-        return -1;
+    {
+        Timer timer("Populate trie", verbose);
+        this->populate_trie(file_content, file_size);
     }
 
-    this->prepare_to_output();
+    {
+        Timer timer("Prepare output", verbose);
+        this->prepare_to_output();
+    }
 
-    return write_to_file(output_file);
+    int r;
+    {
+        Timer timer("Write to file", verbose);
+        r = write_to_file();
+    }
+
+    return r;
 }

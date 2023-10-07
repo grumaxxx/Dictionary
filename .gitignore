@@ -2,6 +2,7 @@ cmake-build-*
 .idea
 .vscode
 build/
+src/test/testfiles/
 
 # OS X
 .DS_Store
