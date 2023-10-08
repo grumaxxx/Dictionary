@@ -1,6 +1,6 @@
 ### Clone the repository
 ```bash
-git clone https://github.com/grumaxxx/Dictionary.git
+git clone --recurse-submodules https://github.com/grumaxxx/Dictionary.git
 ```
 
 ### Navigate to the project directory

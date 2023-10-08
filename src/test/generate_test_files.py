@@ -27,4 +27,6 @@ def generate_files(data_file_name, count_file_name, num_words, num_unique_words)
             f.write(f"{word} {count}\n")
 
 
+print("Start generating testfiles")
 generate_files('testfiles/in.txt', 'testfiles/expected_out.txt', 10000000, 5000)
+print("Done")
